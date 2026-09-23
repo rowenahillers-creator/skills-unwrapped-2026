@@ -155,7 +155,7 @@
     <p class="sub">Every option here is explicit and shows directly in the video - nothing hidden.</p>
     <div class="look-grid">
       <div class="field">
-        <label>Colour theme</label>
+        <label for="themeSelect">Colour theme</label>
         <select id="themeSelect">
           <option value="auto">🎲 Auto</option>
           <option value="violetBloom">Violet Bloom</option>
@@ -164,7 +164,7 @@
         </select>
       </div>
       <div class="field">
-        <label>Intro/outro motif</label>
+        <label for="motifSelect">Intro/outro motif</label>
         <select id="motifSelect">
           <option value="auto">🎲 Auto</option>
           <option value="flight">Flight (plane + runway)</option>
@@ -175,7 +175,7 @@
       </div>
     </div>
     <div class="field">
-      <label>Music track</label>
+      <label for="musicSelect">Music track</label>
       <select id="musicSelect">
         <option value="auto">🎲 Auto-assigned</option>
         <option value="funky-groove">Funky Groove</option>
@@ -198,13 +198,13 @@
   </div>
 
   <div class="panel-video">
-    <canvas id="stage" width="1080" height="1920"></canvas>
+    <canvas id="stage" width="1080" height="1920" role="img" aria-label="Preview of your Strategic Skills Unwrapped video"></canvas>
     <div class="video-controls">
       <div class="player-row">
         <button class="btn btn-violet" id="btnPlayPause" onclick="togglePlayPause()">▶ Preview</button>
         <span id="estLengthTop" style="font-size:12px;color:var(--muted);align-self:center;"></span>
       </div>
-      <input type="range" id="seekBar" min="0" max="1000" value="0" oninput="onSeek(this.value)">
+      <input type="range" id="seekBar" aria-label="Preview position" min="0" max="1000" value="0" oninput="onSeek(this.value)">
       <button class="btn btn-yellow" id="btnGenerate" onclick="generateVideo()">⬇ Generate &amp; download video</button>
       <div id="genWarning" role="status"></div>
       <p class="note" style="margin:6px 0 0;">Generating your video also submits your outcomes and hours to the programme team. Keep this tab open and in view while it renders.</p>
@@ -427,16 +427,33 @@ function contentFor(func,skill){
 // the Sheet's content tabs (OutcomeLabels / LeadershipQuotes / ExternalHireComments /
 // HoursCommentTiers / FunctionWhy / Fillers) takes effect without touching this file.
 // Any bank the Sheet leaves empty/absent just keeps using the built-in default above.
+// Safety net: the Sheet's content tabs have italic instruction rows under the data
+// (e.g. "Use {name} as a placeholder..."). The Apps Script skips them, but if one ever
+// slips through (a note typed without italics, an old script version), it must never
+// reach a participant's screen or video. Anything that reads like an instruction, or is
+// far longer than that bank's real lines, is dropped here.
+const NOTE_PATTERN=/placeholder|one option per row|avoid implying|shown (on|under|above)|picks the|to add (a|more)|leave empty|must be exactly|used whenever|fallback|not required|appear here automatically|rotates|at random per/i;
+function cleanBank(arr,maxLen){
+  return (Array.isArray(arr)?arr:[]).filter(s=>typeof s==='string' && s.trim() && s.length<=maxLen && !NOTE_PATTERN.test(s));
+}
 function applySheetBanks(banks){
   if(!banks) return;
-  if(Array.isArray(banks.outcomeLabels) && banks.outcomeLabels.length) OUTCOME_LABEL_BANK=banks.outcomeLabels;
-  if(Array.isArray(banks.leadershipQuotes) && banks.leadershipQuotes.length) leadershipQuotes=banks.leadershipQuotes;
-  if(Array.isArray(banks.externalComments) && banks.externalComments.length) externalComments=banks.externalComments;
-  if(Array.isArray(banks.hoursCommentTiers) && banks.hoursCommentTiers.length) HOURS_COMMENT_TIERS=banks.hoursCommentTiers;
+  const labels=cleanBank(banks.outcomeLabels,60);
+  const quotes=cleanBank(banks.leadershipQuotes,140);
+  const extComments=cleanBank(banks.externalComments,110);
+  const tiers=(Array.isArray(banks.hoursCommentTiers)?banks.hoursCommentTiers:[])
+    .map(t=>({min:Number(t.min), lines:cleanBank(t.lines,110)}))
+    .filter(t=>isFinite(t.min) && t.lines.length);
+  if(labels.length) OUTCOME_LABEL_BANK=labels;
+  if(quotes.length) leadershipQuotes=quotes;
+  if(extComments.length) externalComments=extComments;
+  if(tiers.length) HOURS_COMMENT_TIERS=tiers;
   if(banks.functionWhy && Object.keys(banks.functionWhy).length) WHY_MATTERS=banks.functionWhy;
   if(banks.fillers){
-    if(Array.isArray(banks.fillers.cohort) && banks.fillers.cohort.length) FILLER_CONTENT.cohort=banks.fillers.cohort;
-    if(Array.isArray(banks.fillers.fact) && banks.fillers.fact.length) FILLER_CONTENT.fact=banks.fillers.fact;
+    const okFiller=f=>f && f.headline && !NOTE_PATTERN.test(f.headline+' '+(f.sub||'')+' '+(f.eyebrow||''));
+    const cohort=(banks.fillers.cohort||[]).filter(okFiller), fact=(banks.fillers.fact||[]).filter(okFiller);
+    if(cohort.length) FILLER_CONTENT.cohort=cohort;
+    if(fact.length) FILLER_CONTENT.fact=fact;
   }
 }
 // Any text coming from the Sheet is shown in the tool or the video, so em dashes typed
